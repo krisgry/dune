@@ -75,17 +75,34 @@ namespace Supervisors
         Task(const std::string& name, Tasks::Context& ctx):
           Tasks::Periodic(name, ctx)
         {
-//          bind<IMC::PlanControlState>(this);
+          param("Default altitude", m_args.alt)
+          .defaultValue("200.0")
+          .units(Units::Meter)
+          .description("Altitude to be used if desired Z has no units");
+
+          param("Default speed", m_args.speed)
+          .defaultValue("18.0")
+          .units(Units::MeterPerSecond)
+          .description("Speed to be used if desired speed is not specified");
+
+          param("Default loiter radius", m_args.lradius)
+          .defaultValue("-150.0")
+          .units(Units::Meter)
+          .description("Loiter radius used in LoiterHere (idle)");
+
+          param("Loitering tolerance", m_args.ltolerance)
+          .defaultValue("10")
+          .units(Units::Meter)
+          .description("Distance to consider loitering (radius + tolerance)");
+
+
+          bind<IMC::PlanControlState>(this);
           bind<IMC::VehicleMedium>(this);
+          bind<IMC::EntityState>(this);
 //          bind<IMC::IndicatedSpeed>(this);
 //          bind<IMC::GpsFix>(this);
 //          bind<IMC::EstimatedState>(this);
 //          bind<IMC::IdleManeuver>(this);
-        }
-
-        void
-        consume(const IMC::VehicleMedium* v_medium)
-        {
         }
 
         void
@@ -95,9 +112,25 @@ namespace Supervisors
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
         }
 
+        void
+        onEntityResolution(void)
+        {
+        }
+
+        void
+        consume(const IMC::VehicleMedium* v_medium)
+        {
+        }
+
 
         void
         consume(const IMC::PlanControlState* msg)
+        {
+        }
+
+
+        void
+        consume(const IMC::EntityState* msg)
         {
         }
 
