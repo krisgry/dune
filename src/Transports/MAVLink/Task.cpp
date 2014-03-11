@@ -222,6 +222,7 @@ namespace Transports
         m_mlh[MAVLINK_MSG_ID_VFR_HUD] = &Task::handleHUDPacket;
         m_mlh[MAVLINK_MSG_ID_SYSTEM_TIME] = &Task::handleSystemTimePacket;
         m_mlh[MAVLINK_MSG_ID_PARAM_VALUE] = &Task::handleParamValuePacket;
+        m_mlh[MAVLINK_MSG_ID_RAW_IMU] = &Task::handleIMU;
 
 
         // Setup processing of IMC messages
@@ -339,12 +340,12 @@ namespace Transports
             m_sysid,
             0,
             MAV_DATA_STREAM_RAW_SENSORS,
-            1,
+            rate,
             1);
 
         n = mavlink_msg_to_send_buffer(buf, msg);
         sendData(buf, n);
-        spew("SENSORS Stream setup to 1 Hertz");
+        spew("SENSORS Stream setup to %d Hertz", rate);
 
         mavlink_msg_request_data_stream_pack(255, 0, msg,
             m_sysid,
@@ -1368,6 +1369,22 @@ namespace Transports
       {
         mavlink_param_value_t param_value;
         mavlink_msg_param_value_decode(msg, &param_value);
+      }
+
+      void
+      handleIMU(const mavlink_message_t* msg)
+      {
+        mavlink_raw_imu_t imu;
+        mavlink_msg_raw_imu_decode(msg, &imu);
+
+        IMC::Acceleration acc;
+        //! Units in IMU packet are mili-g,
+        //! converting to m/s/s
+        acc.x = imu.xacc * Math::c_gravity * 0.001;
+        acc.y = imu.yacc * Math::c_gravity * 0.001;
+        acc.z = imu.zacc * Math::c_gravity * 0.001;
+
+        dispatch(acc);
       }
     };
   }
