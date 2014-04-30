@@ -1025,6 +1025,9 @@ namespace Sensors
           {
             processInput();
           }
+
+          if (Clock::get() >= (m_last_input + c_input_tout))
+            m_state = STA_ERR_COM;
         }
       }
     };
