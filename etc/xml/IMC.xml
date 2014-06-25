@@ -7392,4 +7392,9 @@
       <field name="Content" abbrev="content" type="rawdata"/>
   </message>
 
+  <message id="889" name="Aborted" abbrev="Aborted" source="vehicle">
+    <description>
+      An Abort message was received and acted upon.
+    </description>
+  </message>
 </messages>
