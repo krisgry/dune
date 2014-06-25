@@ -244,6 +244,9 @@ namespace Supervisors
         err("%s", m_vs.last_error.c_str());
 
         stopManeuver(true);
+
+        IMC::Aborted reply;
+        dispatchReply(*msg, reply);
       }
 
       void
