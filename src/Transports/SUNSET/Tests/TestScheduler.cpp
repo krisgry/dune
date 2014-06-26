@@ -45,18 +45,31 @@ using DUNE_NAMESPACES;
 int
 main(int argc, char** argv)
 {
-  Transports::SUNSET::Scheduler sched(NULL);
-  sched.setSchedule("Temperature", 0, 1, 1.0);
-  sched.setSchedule("Temperature", 0, 2, 0.2);
+  using namespace Transports::SUNSET;
 
-  while (true)
-  {
-    double delay = sched.getRemaining();
-    std::cerr << "Waiting " << delay << std::endl;
+  ScheduleKey key0("Temperature", 0, 1);
+  ScheduleKey key1("Temperature", 0, 1);
 
-    Delay::wait(delay);
-    sched.update();
-  }
+  std::map<ScheduleKey, std::string> map;
+  map[key0] = "Lixo1";
+  map[key1] = "Lixo2";
+
+
+  std::cerr << map.size() << std::endl;
+
+  // sched.setSchedule("Temperature", 0, 1, 1.0);
+  // sched.setSchedule("Temperature", 0, 2, 0.2);
+
+
+
+  // while (true)
+  // {
+  //   double delay = sched.getRemaining();
+  //   std::cerr << "Waiting " << delay << std::endl;
+
+  //   Delay::wait(delay);
+  //   sched.update();
+  // }
 
   return 0;
 }

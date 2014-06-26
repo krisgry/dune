@@ -37,6 +37,14 @@ namespace Transports
   {
     using DUNE_NAMESPACES;
 
+    // typedef std::pair<std::string, uint16_t> ScheduleKey;
+    // ScheduleKey
+    // makeKey(const std::string& name, uint8_t sensor_id, unsigned destination)
+    // {
+    //   uint16_t addr = destination << 8 | sensor_id;
+    //   return std::make_pair(name, addr);
+    // }
+
     struct ScheduleKey
     {
       std::string measure_name;
@@ -46,25 +54,33 @@ namespace Transports
       ScheduleKey(const std::string& a_measure_name, unsigned a_sensor_id, unsigned a_destination):
         measure_name(a_measure_name),
         sensor_id(a_sensor_id),
-        destination(a_destination)
+        destination(a_destination),
+        m_hash(measure_name)
       {
-
+        m_hash.push_back((char)a_sensor_id);
+        m_hash.push_back((char)a_destination);
       }
 
       bool
       operator<(const ScheduleKey& other) const
       {
-        if (measure_name < other.measure_name)
-          return true;
-
-        if (sensor_id < other.sensor_id)
-          return true;
-
-        if (destination < other.destination)
-          return true;
-
-        return false;
+        return m_hash < other.m_hash;
       }
+
+      bool
+      operator>(const ScheduleKey& other) const
+      {
+        return m_hash > other.m_hash;
+      }
+
+      bool
+      operator==(const ScheduleKey& other) const
+      {
+        return m_hash == other.m_hash;
+      }
+
+    private:
+      std::string m_hash;
     };
 
     class Schedule
@@ -156,12 +172,16 @@ namespace Transports
         {
           std::list<Schedule*>::iterator itr = insertSchedule(sched);
           sched->setIterator(itr);
+          m_schedule_map[key] = sched;
+          m_pending.push(sched->getKey());
         }
         else
         {
           m_pending.push(sched->getKey());
           delete sched;
         }
+
+        m_task->err("size is %lu", m_schedule_map.size());
       }
 
       double
@@ -240,10 +260,16 @@ namespace Transports
         // The key exists, remove from schedule map and list.
         if (itr != m_schedule_map.end())
         {
+          m_task->debug("removing schedule");
+
           std::list<Schedule*>::iterator litr = itr->second->getIterator();
           delete itr->second;
           m_schedule_map.erase(itr);
           m_schedule_list.erase(litr);
+        }
+        else
+        {
+          m_task->err("schedule not found");
         }
       }
     };

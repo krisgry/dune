@@ -33,7 +33,6 @@
 
 // Local headers.
 #include "Link.hpp"
-#include "PeriodicSample.hpp"
 
 namespace Transports
 {
@@ -47,15 +46,32 @@ namespace Transports
       Sensors(Tasks::Task* task, std::vector<std::string>& table):
         m_task(task)
       {
-        for (size_t i = 0; i < table.size(); i += 4)
+        for (size_t i = 0; i < table.size(); i += 5)
         {
           std::string measurement = table[i + 0];
           SensorInfoTuple tuple;
-          tuple.sensor_id = castLexical<unsigned>(table[i + 1]);
-          tuple.sensor_vendor = table[i + 2];
-          tuple.sensor_model = table[i + 3];
+          tuple.sensor_id = castLexical<unsigned>(table[i + 2]);
+          tuple.sensor_vendor = table[i + 3];
+          tuple.sensor_model = table[i + 4];
           m_sensor_map[measurement][tuple.sensor_id] = tuple;
+
+          try
+          {
+            m_eids[std::make_pair(measurement, m_task->resolveEntity(table[i + 1]))] = tuple.sensor_id;
+          }
+          catch (...)
+          { }
         }
+      }
+
+      int
+      getSensorId(const std::string& name, unsigned eid)
+      {
+        std::map<std::pair<std::string, unsigned>, unsigned>::const_iterator itr = m_eids.find(std::make_pair(name, eid));
+        if (itr == m_eids.end())
+          return -1;
+
+        return itr->second;
       }
 
       void
@@ -112,6 +128,7 @@ namespace Transports
       SensorListMap m_sensor_map;
       //! Readings.
       std::map<std::string, std::map<unsigned, SensorSample*> > m_readings;
+      std::map<std::pair<std::string, unsigned>, unsigned> m_eids;
     };
   }
 }

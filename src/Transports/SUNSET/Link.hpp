@@ -62,6 +62,24 @@ namespace Transports
       Network::TCPSocket m_sock;
 
       void
+      read(double timeout, IMC::DevDataText& text, uint8_t* bfr, size_t bfr_size)
+      {
+        if (!Poll::poll(m_sock, timeout))
+          return;
+
+        size_t rv = m_sock.read(bfr, bfr_size);
+        for (size_t i = 0; i < rv; ++i)
+        {
+          text.value.push_back((char)bfr[i]);
+          if (bfr[i] == '\n')
+          {
+            m_task->receive(&text);
+            text.value.clear();
+          }
+        }
+      }
+
+      void
       run(void)
       {
         uint8_t bfr[128];
@@ -70,18 +88,19 @@ namespace Transports
 
         while (!isStopping())
         {
-          if (!Poll::poll(m_sock, 1.0))
-            continue;
-
-          size_t rv = m_sock.read(bfr, sizeof(bfr));
-          for (size_t i = 0; i < rv; ++i)
+          try
           {
-            text.value.push_back((char)bfr[i]);
-            if (bfr[i] == '\n')
-            {
-              m_task->receive(&text);
-              text.value.clear();
-            }
+            read(1.0, text, bfr, sizeof(bfr));
+          }
+          catch (...)
+          {
+            IMC::IoEvent iov;
+            iov.setSource(m_task->getSystemId());
+            iov.setSourceEntity(m_task->getEntityId());
+            iov.setDestinationEntity(m_task->getEntityId());
+            iov.type = IMC::IoEvent::IOV_TYPE_INPUT_ERROR;
+            m_task->receive(&iov);
+            break;
           }
         }
       }

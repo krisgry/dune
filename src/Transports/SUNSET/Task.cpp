@@ -104,6 +104,7 @@ namespace Transports
         bind<IMC::Aborted>(this);
         bind<IMC::PlanControl>(this);
         bind<IMC::DevDataText>(this);
+        bind<IMC::IoEvent>(this);
 
         // Sensors.
         bind<IMC::Conductivity>(this);
@@ -138,6 +139,7 @@ namespace Transports
         try
         {
           m_link = new Link(this, m_args.tcp_addr.c_str(), m_args.tcp_port);
+          m_link->start();
           m_sensors = new Sensors(this, m_args.sensors);
           m_scheduler = new Scheduler(this);
         }
@@ -163,6 +165,22 @@ namespace Transports
           delete m_link;
           m_link = NULL;
         }
+
+        Memory::clear(m_sensors);
+        Memory::clear(m_scheduler);
+      }
+
+      void
+      consume(const IMC::IoEvent* msg)
+      {
+        if (msg->getSource() != getSystemId())
+          return;
+
+        if (msg->getDestination() != getEntityId())
+          return;
+
+        if (msg->type == IMC::IoEvent::IOV_TYPE_INPUT_ERROR)
+          throw RestartNeeded(DTR("input error"), 5);
       }
 
       void
@@ -194,7 +212,9 @@ namespace Transports
         if (msg->getSource() != getSystemId())
           return;
 
-        m_sensors->setMeasurement("SoundVelocity", 0, msg->value, m_position);
+        int sid = m_sensors->getSensorId("SoundVelocity", msg->getSourceEntity());
+        if (sid >= 0)
+          m_sensors->setMeasurement("SoundVelocity", sid, msg->value, m_position);
       }
 
       void
@@ -265,8 +285,6 @@ namespace Transports
       void
       handlePlanListGet(const PlanListGet* cmd)
       {
-        debug("handle PlanListGet");
-
         m_plan_list.clear();
         IMC::PlanDB db;
         db.type = IMC::PlanDB::DBT_REQUEST;
@@ -284,7 +302,7 @@ namespace Transports
           }
         }
 
-        // FIXME: do something here.
+        sendFailure(cmd->getSource(), FAIL_INTERNAL_ERROR);
       }
 
       void
@@ -299,7 +317,6 @@ namespace Transports
       void
       handlePositionGet(const PositionGet* cmd)
       {
-        debug("handling PositionGet");
         m_scheduler->setSchedule("Position",
                                  0,
                                  cmd->getSource(),
@@ -444,6 +461,7 @@ namespace Transports
       sendSensorSample(const std::string& name, unsigned sensor_id, unsigned destination)
       {
         SensorSample cmd(m_sensors->getMeasurement(name, sensor_id));
+        cmd.measurement_name = name;
         cmd.setDestination(destination);
         sendCommand(cmd);
       }
@@ -477,18 +495,18 @@ namespace Transports
         try
         {
           cmd = Factory::decode(line);
-          cmd->toText(std::cerr);
-
-          CommandOk ok;
-          ok.name = cmd->getName();
-          ok.setSource(cmd->getSource());
-          ok.setDestination(cmd->getSource());
 
           if (cmd->getName() == "Param")
             handleParam(static_cast<Param*>(cmd));
 
           if (cmd->getName() != "CommandOk" && cmd->getName() != "CommandError" && cmd->getName() != "CommandFailure")
+          {
+            CommandOk ok;
+            ok.name = cmd->getName();
+            ok.setSource(m_addr_local);
+            ok.setDestination(m_addr_local);
             sendCommand(ok);
+          }
 
           if (cmd->getName() == "Abort")
             handleAbort(static_cast<Abort*>(cmd));
@@ -507,6 +525,9 @@ namespace Transports
 
           if (cmd->getName() == "SensorSampleGet")
             handleSensorSampleGet(static_cast<SensorSampleGet*>(cmd));
+
+          if (cmd->getName() == "SensorInfoGet")
+            handleSensorInfoGet(static_cast<SensorInfoGet*>(cmd));
 
           if (cmd->getName() == "PositionGet")
             handlePositionGet(static_cast<PositionGet*>(cmd));
