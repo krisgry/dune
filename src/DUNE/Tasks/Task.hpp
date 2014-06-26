@@ -330,6 +330,14 @@ namespace DUNE
       void
       writeParamsXML(std::ostream& os) const;
 
+      //! Retrieve the entity id of a given entity label.
+      //! @param[in] label entity label.
+      //! @throw NonexistentLabel if the label doesn't have an
+      //! associated id.
+      //! @return entity id.
+      unsigned int
+      resolveEntity(const std::string& label) const;
+
     protected:
       //! Context.
       Context& m_ctx;
@@ -380,14 +388,6 @@ namespace DUNE
       //! @return entity id.
       unsigned int
       reserveEntity(const std::string& label);
-
-      //! Retrieve the entity id of a given entity label.
-      //! @param[in] label entity label.
-      //! @throw NonexistentLabel if the label doesn't have an
-      //! associated id.
-      //! @return entity id.
-      unsigned int
-      resolveEntity(const std::string& label) const;
 
       //! Retrieve the entity label of a given entity id.
       //! @param[in] id entity id.
