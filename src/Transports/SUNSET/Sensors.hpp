@@ -64,6 +64,12 @@ namespace Transports
         }
       }
 
+      bool
+      exists(const std::string& name, unsigned sensor_id)
+      {
+        return (m_readings[name][sensor_id] != NULL);
+      }
+
       int
       getSensorId(const std::string& name, unsigned eid)
       {
@@ -88,7 +94,7 @@ namespace Transports
       getMeasurement(const std::string& name, unsigned sensor_id)
       {
         if (m_readings[name][sensor_id] == NULL)
-          throw InvalidValue();
+          throw InvalidRequest();
 
         return *m_readings[name][sensor_id];
       }

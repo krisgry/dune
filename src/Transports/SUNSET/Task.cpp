@@ -420,6 +420,26 @@ namespace Transports
       }
 
       void
+      sendError(unsigned destination, ErrorType error)
+      {
+        CommandError cmd;
+        cmd.setSource(m_addr_local);
+        cmd.setDestination(destination);
+        cmd.error_reason = error;
+        sendCommand(cmd);
+      }
+
+      void
+      sendOk(const std::string& command)
+      {
+        CommandOk ok;
+        ok.name = command;
+        ok.setSource(m_addr_local);
+        ok.setDestination(m_addr_local);
+        sendCommand(ok);
+      }
+
+      void
       handleSensorListGet(const SensorListGet* cmd)
       {
         (void)cmd;
@@ -451,10 +471,18 @@ namespace Transports
       void
       handleSensorSampleGet(const SensorSampleGet* cmd)
       {
-        m_scheduler->setSchedule(cmd->measurement_name,
-                                 cmd->sensor_identifier,
-                                 cmd->getSource(),
-                                 cmd->sampling_frequency);
+        if (!m_sensors->exists(cmd->measurement_name, cmd->sensor_identifier))
+        {
+          sendError(cmd->getSource(), ERR_INVALID_REQUEST);
+        }
+        else
+        {
+          m_scheduler->setSchedule(cmd->measurement_name,
+                                   cmd->sensor_identifier,
+                                   cmd->getSource(),
+                                   cmd->sampling_frequency);
+          sendOk(cmd->getName());
+        }
       }
 
       void
@@ -499,13 +527,12 @@ namespace Transports
           if (cmd->getName() == "Param")
             handleParam(static_cast<Param*>(cmd));
 
-          if (cmd->getName() != "CommandOk" && cmd->getName() != "CommandError" && cmd->getName() != "CommandFailure")
+          if (cmd->getName() != "CommandOk"
+              && cmd->getName() != "CommandError"
+              && cmd->getName() != "CommandFailure"
+              && cmd->getName() != "SensorSampleGet")
           {
-            CommandOk ok;
-            ok.name = cmd->getName();
-            ok.setSource(m_addr_local);
-            ok.setDestination(m_addr_local);
-            sendCommand(ok);
+            sendOk(cmd->getName());
           }
 
           if (cmd->getName() == "Abort")

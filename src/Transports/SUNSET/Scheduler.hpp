@@ -180,8 +180,6 @@ namespace Transports
           m_pending.push(sched->getKey());
           delete sched;
         }
-
-        m_task->err("size is %lu", m_schedule_map.size());
       }
 
       double
@@ -260,16 +258,10 @@ namespace Transports
         // The key exists, remove from schedule map and list.
         if (itr != m_schedule_map.end())
         {
-          m_task->debug("removing schedule");
-
           std::list<Schedule*>::iterator litr = itr->second->getIterator();
           delete itr->second;
           m_schedule_map.erase(itr);
           m_schedule_list.erase(litr);
-        }
-        else
-        {
-          m_task->err("schedule not found");
         }
       }
     };
