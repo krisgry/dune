@@ -110,7 +110,6 @@ namespace Transports
         bind<IMC::Conductivity>(this);
         bind<IMC::Salinity>(this);
         bind<IMC::Temperature>(this);
-        // bind<IMC::Distance>(this);
         bind<IMC::SoundSpeed>(this);
       }
 
@@ -142,6 +141,7 @@ namespace Transports
           m_link->start();
           m_sensors = new Sensors(this, m_args.sensors);
           m_scheduler = new Scheduler(this);
+          setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
         }
         catch (...)
         {

@@ -52,6 +52,9 @@ namespace Transports
       void
       write(const std::string& cmd)
       {
+        IMC::DevDataText text;
+        text.value = cmd;
+        m_task->dispatch(text);
         m_task->spew("sending: %s", sanitize(cmd).c_str());
         m_sock.write(cmd.c_str(), cmd.size());
       }
@@ -73,7 +76,7 @@ namespace Transports
           text.value.push_back((char)bfr[i]);
           if (bfr[i] == '\n')
           {
-            m_task->receive(&text);
+            m_task->dispatch(&text, DF_LOOP_BACK);
             text.value.clear();
           }
         }
