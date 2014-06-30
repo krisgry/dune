@@ -223,7 +223,9 @@ namespace Transports
         if (msg->getSource() != getSystemId())
           return;
 
-        m_sensors->setMeasurement("Salinity", 0, msg->value, m_position);
+        int sid = m_sensors->getSensorId("Salinity", msg->getSourceEntity());
+        if (sid >= 0)
+          m_sensors->setMeasurement("Salinity", sid, msg->value, m_position);
       }
 
       void
@@ -232,7 +234,9 @@ namespace Transports
         if (msg->getSource() != getSystemId())
           return;
 
-        m_sensors->setMeasurement("Temperature", 0, msg->value, m_position);
+        int sid = m_sensors->getSensorId("Temperature", msg->getSourceEntity());
+        if (sid >= 0)
+          m_sensors->setMeasurement("Temperature", sid, msg->value, m_position);
       }
 
       void
@@ -241,7 +245,9 @@ namespace Transports
         if (msg->getSource() != getSystemId())
           return;
 
-        m_sensors->setMeasurement("Conductivity", 0, msg->value, m_position);
+        int sid = m_sensors->getSensorId("Conductivity", msg->getSourceEntity());
+        if (sid >= 0)
+          m_sensors->setMeasurement("Conductivity", sid, msg->value, m_position);
       }
 
       void
