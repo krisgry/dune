@@ -73,6 +73,12 @@ namespace Transports
       Scheduler* m_scheduler;
       //! Last position.
       Position m_position;
+      //! Watchdog.
+      Counter<double> m_wdog;
+      //! Keep-alive timer.
+      Counter<double> m_kalive;
+      //! Medium.
+      IMC::VehicleMedium m_medium;
       //! Task arguments.
       Arguments m_args;
 
@@ -99,12 +105,15 @@ namespace Transports
         param("Sensors", m_args.sensors)
         .description("List of sensors");
 
+        m_medium.medium = IMC::VehicleMedium::VM_UNKNOWN;
+
         bind<IMC::PlanDB>(this);
         bind<IMC::EstimatedState>(this);
         bind<IMC::Aborted>(this);
         bind<IMC::PlanControl>(this);
         bind<IMC::DevDataText>(this);
         bind<IMC::IoEvent>(this);
+        bind<IMC::VehicleMedium>(this);
 
         // Sensors.
         bind<IMC::Conductivity>(this);
@@ -153,6 +162,7 @@ namespace Transports
       void
       onResourceInitialization(void)
       {
+        m_kalive.setTop(5.0);
       }
 
       //! Release resources.
@@ -181,6 +191,30 @@ namespace Transports
 
         if (msg->type == IMC::IoEvent::IOV_TYPE_INPUT_ERROR)
           throw RestartNeeded(DTR("input error"), 5);
+      }
+
+      void
+      consume(const IMC::VehicleMedium* msg)
+      {
+        if (msg->medium != m_medium.medium)
+        {
+          debug("medium changed to %u", msg->medium);
+          m_medium = *msg;
+          switch (msg->medium)
+          {
+            case IMC::VehicleMedium::VM_UNDERWATER:
+              setTxPower(1);
+              break;
+
+            case IMC::VehicleMedium::VM_WATER:
+              setTxPower(2);
+              break;
+
+            default:
+              setTxPower(3);
+              break;
+          }
+        }
       }
 
       void
@@ -524,6 +558,7 @@ namespace Transports
       handleCommand(const std::string& line)
       {
         debug("received: %s", sanitize(line).c_str());
+        m_kalive.reset();
 
         AbstractCommand* cmd = NULL;
         try
@@ -605,6 +640,35 @@ namespace Transports
         }
       }
 
+      void
+      requestNodeId(void)
+      {
+        ParamGet cmd;
+        cmd.name = NODE_ID;
+        cmd.setDestination(m_addr_local);
+        sendCommand(cmd);
+      }
+
+      void
+      setTxPower(unsigned level)
+      {
+        ParamSet cmd;
+        cmd.name = TX_POWER;
+        cmd.value = uncastLexical(level);
+        cmd.setDestination(m_addr_local);
+        sendCommand(cmd);
+      }
+
+      void
+      keepAlive(void)
+      {
+        if (!m_kalive.overflow())
+          return;
+
+        m_kalive.reset();
+        requestNodeId();
+      }
+
       //! Main loop.
       void
       onMain(void)
@@ -613,6 +677,7 @@ namespace Transports
         {
           waitForMessages(getLoopDelay());
           updateScheduler();
+          keepAlive();
         }
       }
     };
