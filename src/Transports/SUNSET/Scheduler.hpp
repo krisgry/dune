@@ -37,14 +37,6 @@ namespace Transports
   {
     using DUNE_NAMESPACES;
 
-    // typedef std::pair<std::string, uint16_t> ScheduleKey;
-    // ScheduleKey
-    // makeKey(const std::string& name, uint8_t sensor_id, unsigned destination)
-    // {
-    //   uint16_t addr = destination << 8 | sensor_id;
-    //   return std::make_pair(name, addr);
-    // }
-
     struct ScheduleKey
     {
       std::string measure_name;
