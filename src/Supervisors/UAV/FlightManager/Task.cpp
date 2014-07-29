@@ -65,15 +65,35 @@ namespace Supervisors
         float lradius;
         //! Loitering tolerance
         int ltolerance;
+        //! Lost comms plan name
+        std::string plan;
       };
 
       struct Task: public DUNE::Tasks::Periodic
       {
         //! Task arguments.
         Arguments m_args;
+        //! Current position
+        double m_lat, m_lon;
+        float m_hei;
+        //! Vehicle medium
+        bool m_airborne;
+        //! Important entities
+        unsigned m_comms, m_takeoff, m_land;
+        //! Vehicle is doing Lost Comms plans
+        bool m_in_lc;
 
         Task(const std::string& name, Tasks::Context& ctx):
-          Tasks::Periodic(name, ctx)
+          Tasks::Periodic(name, ctx),
+          m_lat(0),
+          m_lon(0),
+          m_hei(0),
+          m_airborne(false),
+          m_comms(UINT_MAX),
+          m_takeoff(UINT_MAX),
+          m_land(UINT_MAX),
+          m_in_lc(false)
+
         {
           param("Default altitude", m_args.alt)
           .defaultValue("200.0")
@@ -95,14 +115,18 @@ namespace Supervisors
           .units(Units::Meter)
           .description("Distance to consider loitering (radius + tolerance)");
 
+          param("Lost Comms Plan", m_args.plan)
+          .defaultValue("lost_comms")
+          .description("Plan to be executed in case of Lost Communications");
+
 
           bind<IMC::PlanControlState>(this);
           bind<IMC::VehicleMedium>(this);
           bind<IMC::EntityState>(this);
 //          bind<IMC::IndicatedSpeed>(this);
 //          bind<IMC::GpsFix>(this);
-//          bind<IMC::EstimatedState>(this);
-//          bind<IMC::IdleManeuver>(this);
+          bind<IMC::EstimatedState>(this);
+          bind<IMC::IdleManeuver>(this);
         }
 
         void
@@ -115,23 +139,99 @@ namespace Supervisors
         void
         onEntityResolution(void)
         {
+          try {
+            m_comms = resolveEntity("Communications");
+          }
+          catch (...) {}
+
+          try {
+            m_takeoff = resolveEntity("Takeoff Monitor");
+          }
+          catch (...) {}
+
+          try {
+            m_land = resolveEntity("Landing Monitor");
+          }
+          catch (...) {}
         }
 
         void
-        consume(const IMC::VehicleMedium* v_medium)
+        consume(const IMC::VehicleMedium* msg)
         {
+          if (msg->medium == IMC::VehicleMedium::VM_AIR)
+            m_airborne = true;
+
+          (void) msg;
         }
 
 
         void
         consume(const IMC::PlanControlState* msg)
         {
+          // Check if already running Lost Comms plan
+          if (!msg->plan_id.compare(m_args.plan))
+          {
+            m_in_lc = true;
+          }
+          else
+            m_in_lc = false;
         }
 
 
         void
         consume(const IMC::EntityState* msg)
         {
+          // Run Lost Comms plan if Communications monitor
+          // in in FAULT state and if Lost Comms plan
+          // is not running yet
+          if (msg->getSourceEntity() == m_comms &&
+              msg->state == IMC::EntityState::ESTA_FAULT &&
+              !m_in_lc)
+          {
+            IMC::PlanControl p_control;
+            p_control.plan_id = m_args.plan;
+            p_control.op = IMC::PlanControl::PC_START;
+            p_control.type = IMC::PlanControl::PC_REQUEST;
+            p_control.flags = IMC::PlanControl::FLG_IGNORE_ERRORS;
+
+            dispatch(p_control);
+          }
+          (void) msg;
+        }
+
+        void
+        consume(const IMC::EstimatedState* msg)
+        {
+          // Save current position
+          m_lat = msg->lat;
+          m_lon = msg->lon;
+          m_hei = msg->height;
+
+          WGS84::displace(msg->x, msg->y, msg->z, &m_lat, &m_lon, &m_hei);
+        }
+
+        void
+        consume(const IMC::IdleManeuver* msg)
+        {
+          (void) msg;
+
+          // Start loiter on current position
+          IMC::ControlLoops cloops;
+          cloops.enable = IMC::ControlLoops::CL_ENABLE;
+          cloops.mask = IMC::CL_PATH;
+
+          dispatch(cloops);
+
+          IMC::DesiredPath dpath;
+
+          dpath.lradius = std::abs(m_args.lradius);
+          dpath.flags = IMC::DesiredPath::FL_LOITER_CURR;
+          dpath.flags |= (m_args.lradius < 0 ? IMC::DesiredPath::FL_CCLOCKW : 0);
+
+          dpath.speed = m_args.speed;
+          dpath.speed_units = IMC::SUNITS_METERS_PS;
+
+          dispatch(dpath);
         }
 
         void
