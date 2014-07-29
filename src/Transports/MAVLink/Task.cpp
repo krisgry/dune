@@ -59,6 +59,8 @@ namespace Transports
       //! Value range
       float val_max;
       float val_min;
+      //! Channel reverse
+      bool reverse;
     };
 
     //! %Task arguments.
@@ -72,16 +74,16 @@ namespace Transports
       Address TCP_addr;
       //! Telemetry Rate
       uint8_t trate;
-      //! GPS is uBlox
-      bool ublox;
       //! Loitering tolerance
       int ltolerance;
       //! Has Power Module
       bool pwrm;
       //! WP seconds before reach
       int secs;
-      //! Use APM's Waypoint tracker instead of DUNE's
-      bool ardu_tracker;
+      //! HITL
+      bool hitl;
+      //! UAV Supervisor Entity
+      std::string supervisor;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -168,10 +170,6 @@ namespace Transports
         .units(Units::Second)
         .description("Ardupilot communications timeout");
 
-        param("Ardupilot Tracker", m_args.ardu_tracker)
-        .defaultValue("false")
-        .description("Use Ardupilot's waypoint tracker");
-
         param("TCP - Port", m_args.TCP_port)
         .defaultValue("5760")
         .description("Port for connection to Ardupilot");
@@ -184,10 +182,6 @@ namespace Transports
         .defaultValue("10")
         .units(Units::Hertz)
         .description("Telemetry output rate from Ardupilot");
-
-        param("uBlox GPS", m_args.ublox)
-        .defaultValue("false")
-        .description("The installed GPS is uBlox");
 
         param("Loitering tolerance", m_args.ltolerance)
         .defaultValue("10")
@@ -379,14 +373,9 @@ namespace Transports
         if (cloops->enable)
         {
           m_cloops |= cloops->mask;
-          if ((!m_args.ardu_tracker) && (cloops->mask & IMC::CL_PATH))
-          {
-            debug("Ardupilot tracker is NOT enabled");
-            m_cloops &= ~IMC::CL_PATH;
-          }
 
-          if (!(m_args.ardu_tracker) && (cloops->mask & IMC::CL_ROLL))
-            onParameterUpdate();
+          if (cloops->mask & IMC::CL_ROLL)
+            activateFBW();
         }
         else
         {
@@ -394,26 +383,24 @@ namespace Transports
 
           if ((cloops->mask & IMC::CL_ROLL) && !m_ground)
           {
-            mavlink_message_t* msg = new mavlink_message_t;
+            mavlink_message_t msg;
             uint8_t buf[512];
 
             //! Disabling RC override
-            mavlink_msg_rc_channels_override_pack(255, 0, msg,
-                1,
-                1,
-                0, //! RC Channel 1 (roll)
-                0, //! RC Channel 2 (vertical rate)
-                0, //! RC Channel 3 (speed)
-                0, //! RC Channel 4 (rudder)
-                0, //! RC Channel 5 (not used)
-                0, //! RC Channel 6 (not used)
-                0, //! RC Channel 7 (not used)
-                0);//! RC Channel 8 (mode)
-            uint16_t n = mavlink_msg_to_send_buffer(buf, msg);
-            sendData(buf, n);
+            mavlink_msg_rc_channels_override_pack(255, 0, &msg,
+                                                  1,
+                                                  1,
+                                                  0, //! RC Channel 1 (roll)
+                                                  0, //! RC Channel 2 (vertical rate)
+                                                  0, //! RC Channel 3 (speed)
+                                                  0, //! RC Channel 4 (rudder)
+                                                  0, //! RC Channel 5 (not used)
+                                                  0, //! RC Channel 6 (not used)
+                                                  0, //! RC Channel 7 (not used)
+                                                  0);//! RC Channel 8 (mode)
 
-            sendCommandPacket(MAV_CMD_NAV_LOITER_UNLIM);
-            inf(DTR("Loiter"));
+            uint16_t n = mavlink_msg_to_send_buffer(buf, &msg);
+            sendData(buf, n);
           }
         }
 
@@ -430,23 +417,20 @@ namespace Transports
       activateFBW(void)
       {
         uint8_t buf[512];
-        mavlink_message_t* msg = new mavlink_message_t;
+        mavlink_message_t msg;
 
-        mavlink_msg_set_mode_pack(255, 0, msg,
+        mavlink_msg_set_mode_pack(255, 0, &msg,
             m_sysid,
             1,
             6); //!FBWB
 
-        uint16_t n = mavlink_msg_to_send_buffer(buf, msg);
+        uint16_t n = mavlink_msg_to_send_buffer(buf, &msg);
         sendData(buf, n);
       }
 
       void
       consume(const IMC::DesiredRoll* d_roll)
       {
-        if(m_external || m_critical || m_ground)
-          return;
-
         if (!(m_cloops & IMC::CL_ROLL))
         {
           debug("bank control is NOT active");
@@ -1269,9 +1253,6 @@ namespace Transports
       void
       handleNavControllerPacket(const mavlink_message_t* msg)
       {
-        if (!m_args.ardu_tracker)
-          return;
-
         mavlink_nav_controller_output_t nav_out;
         mavlink_msg_nav_controller_output_decode(msg, &nav_out);
         debug("WP Dist: %d", nav_out.wp_dist);
