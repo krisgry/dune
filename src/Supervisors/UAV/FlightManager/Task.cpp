@@ -82,6 +82,10 @@ namespace Supervisors
         unsigned m_comms, m_takeoff, m_land;
         //! Vehicle is doing Lost Comms plans
         bool m_in_lc;
+        //! Current autonomy level
+        unsigned m_autonomy;
+        //! Current desired path
+        IMC::DesiredPath m_dpath;
 
         Task(const std::string& name, Tasks::Context& ctx):
           Tasks::Periodic(name, ctx),
@@ -92,7 +96,8 @@ namespace Supervisors
           m_comms(UINT_MAX),
           m_takeoff(UINT_MAX),
           m_land(UINT_MAX),
-          m_in_lc(false)
+          m_in_lc(false),
+          m_autonomy(0)
 
         {
           param("Default altitude", m_args.alt)
@@ -127,6 +132,8 @@ namespace Supervisors
 //          bind<IMC::GpsFix>(this);
           bind<IMC::EstimatedState>(this);
           bind<IMC::IdleManeuver>(this);
+          bind<IMC::AutopilotMode>(this);
+          bind<IMC::DesiredPath>(this);
         }
 
         void
@@ -164,6 +171,34 @@ namespace Supervisors
           (void) msg;
         }
 
+        void
+        consume(const IMC::AutopilotMode* msg)
+        {
+          m_autonomy = msg->autonomy;
+
+          (void) msg;
+        }
+
+        void
+        consume(const IMC::DesiredPath* msg)
+        {
+          m_dpath = *msg;
+          (void) msg;
+
+          if (m_autonomy != IMC::AutopilotMode::AL_AUTO)
+            return;
+
+          if (!m_airborne)
+          {
+            dispatch(m_dpath);
+          }
+          else
+          {
+            // TODO Add FL_TAKEOFF
+            //m_dpath.flags |= IMC::DesiredPath::FL_TAKEOFF;
+            dispatch(m_dpath);
+          }
+        }
 
         void
         consume(const IMC::PlanControlState* msg)
