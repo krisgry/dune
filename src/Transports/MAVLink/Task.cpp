@@ -564,12 +564,11 @@ namespace Transports
           return;
         }
 
-        // TODO Add FL_TAKEOFF
-//        if (path->flags & IMC::DesiredPath::FL_TAKEOFF)
-//        {
-//          takeoff(path);
-//          return;
-//        }
+        if (path->flags & IMC::DesiredPath::FL_TAKEOFF)
+        {
+          takeoff(path);
+          return;
+        }
 
         uint8_t buf[512];
 
