@@ -146,20 +146,32 @@ namespace Supervisors
         void
         onEntityResolution(void)
         {
-          try {
+          try
+          {
             m_comms = resolveEntity("Communications");
           }
-          catch (...) {}
+          catch (...)
+          {
+            m_comms = UINT_MAX;
+          }
 
-          try {
+          try
+          {
             m_takeoff = resolveEntity("Takeoff Monitor");
           }
-          catch (...) {}
+          catch (...)
+          {
+            m_takeoff = UINT_MAX;
+          }
 
-          try {
+          try
+          {
             m_land = resolveEntity("Landing Monitor");
           }
-          catch (...) {}
+          catch (...)
+          {
+            m_land = UINT_MAX;
+          }
         }
 
         void
@@ -189,15 +201,9 @@ namespace Supervisors
             return;
 
           if (!m_airborne)
-          {
-            dispatch(m_dpath);
-          }
-          else
-          {
-            // TODO Add FL_TAKEOFF
-            //m_dpath.flags |= IMC::DesiredPath::FL_TAKEOFF;
-            dispatch(m_dpath);
-          }
+            m_dpath.flags |= IMC::DesiredPath::FL_TAKEOFF;
+
+          dispatch(m_dpath);
         }
 
         void
