@@ -67,6 +67,8 @@ namespace Supervisors
         int ltolerance;
         //! Lost comms plan name
         std::string plan;
+        //! Type of aircraft
+        Aircraft acft_type;
       };
 
       struct Task: public DUNE::Tasks::Periodic
@@ -100,6 +102,11 @@ namespace Supervisors
           m_autonomy(0)
 
         {
+          param("Aircraft Type", m_args.acft_type)
+          .defaultValue("Fixed-wing")
+          .values("Fixed-wing, Rotor, Aerostat")
+          .description("Type of aircraft being controlled");
+
           param("Default altitude", m_args.alt)
           .defaultValue("200.0")
           .units(Units::Meter)
@@ -179,6 +186,8 @@ namespace Supervisors
         {
           if (msg->medium == IMC::VehicleMedium::VM_AIR)
             m_airborne = true;
+          else
+            m_airborne = false;
 
           (void) msg;
         }
@@ -256,7 +265,11 @@ namespace Supervisors
         {
           (void) msg;
 
-          // Start loiter on current position
+          // Start loiter on current position if IdleManeuver is received
+          // Should be used for fixed-wing only
+          if (m_args.acft_type != ACFT_FIXEDWING)
+            return;
+
           IMC::ControlLoops cloops;
           cloops.enable = IMC::ControlLoops::CL_ENABLE;
           cloops.mask = IMC::CL_PATH;
