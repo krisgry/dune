@@ -233,8 +233,7 @@ namespace Supervisors
         if (msg->getDestination() != getSystemId())
           return;
 
-        m_vs.last_error = DTR("got abort request");
-        m_vs.last_error_time = Clock::getSinceEpoch();
+        setLastError(DTR("got abort request"));
         err("%s", m_vs.last_error.c_str());
 
         stopManeuver(true);
@@ -317,8 +316,7 @@ namespace Supervisors
 
         if (m_vs.error_count && msg->last_error_time > m_vs.last_error_time)
         {
-          m_vs.last_error = msg->last_error;
-          m_vs.last_error_time = msg->last_error_time;
+          setLastError(msg->last_error, msg->last_error_time);
         }
 
         m_vs.error_ents = "";
@@ -406,9 +404,9 @@ namespace Supervisors
             m_switch_time = Clock::get();
             break;
           case IMC::ManeuverControlState::MCS_ERROR:
-            m_vs.last_error = IMC::Factory::getAbbrevFromId(m_vs.maneuver_type)
-            + DTR(" maneuver error: ") + msg->info;
-            m_vs.last_error_time = msg->getTimeStamp();
+            setLastError(IMC::Factory::getAbbrevFromId(m_vs.maneuver_type)
+                         + DTR(" maneuver error: ") + msg->info,
+                         msg->getTimeStamp());
             debug("%s", m_vs.last_error.c_str());
             changeMode(IMC::VehicleState::VS_SERVICE);
             reset();
@@ -590,6 +588,19 @@ namespace Supervisors
       }
 
       void
+      setLastError(const std::string& str, double time)
+      {
+        m_vs.last_error = str;
+        m_vs.last_error_time = time;
+      }
+
+      void
+      setLastError(const std::string& str)
+      {
+        setLastError(str, Clock::getSinceEpoch());
+      }
+
+      void
       task(void)
       {
         dispatch(m_vs);
@@ -611,17 +622,18 @@ namespace Supervisors
 
         if (maneuverMode() && (delta > c_man_timeout))
         {
-          inf(DTR("maneuver request timeout"));
+          setLastError(DTR("maneuver request timeout"));
           timedout = true;
         }
         else if (calibrationMode() && (delta > m_calib_timeout))
         {
-          inf(DTR("calibration timed out"));
+          setLastError(DTR("calibration timed out"));
           timedout = true;
         }
 
         if (timedout)
         {
+          changeMode(IMC::VehicleState::VS_ERROR);
           reset();
           changeMode(IMC::VehicleState::VS_SERVICE);
           m_switch_time = -1.0;
