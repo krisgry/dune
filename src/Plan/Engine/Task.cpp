@@ -634,8 +634,6 @@ namespace Plan
 
         m_pcs.plan_id = m_spec.plan_id;
 
-        ps.toText(std::cerr);
-
         onSuccess(DTR("plan loaded"), false);
 
         return true;
@@ -823,6 +821,12 @@ namespace Plan
       bool
       startPlan(const std::string& plan_id, const IMC::Message* spec, uint16_t flags)
       {
+        if (blockedMode())
+        {
+          onFailure(DTR("cannot initialize plan in BLOCKED state"));
+          return false;
+        }
+
         bool stopped = stopPlan(true);
 
         changeMode(IMC::PlanControlState::PCS_EXECUTING,
@@ -871,12 +875,6 @@ namespace Plan
       bool
       startCalibration(void)
       {
-        if (blockedMode())
-        {
-          onFailure(DTR("cannot initialize plan in BLOCKED state"));
-          return false;
-        }
-
         IMC::Message* m = 0;
 
         IMC::StationKeeping sk;
