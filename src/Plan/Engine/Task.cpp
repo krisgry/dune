@@ -396,7 +396,7 @@ namespace Plan
           error = false;
         }
 
-        if (initMode() || execMode())
+        if (execMode())
         {
           if (error)
             changeMode(IMC::PlanControlState::PCS_READY, vc->info, false);
@@ -411,6 +411,9 @@ namespace Plan
           return;
 
         m_last_vstate = Clock::get();
+
+        if (blockedMode())
+          changeMode(IMC::PlanControlState::PCS_READY, DTR("vehicle ready"));
 
         switch (vs->op_mode)
         {
@@ -427,13 +430,12 @@ namespace Plan
           case IMC::VehicleState::VS_MANEUVER:
             onVehicleManeuver(vs);
             break;
-          case IMC::VehicleState::VS_EXTERNAL:
-            onVehicleExternalControl(vs);
+          default:
             break;
         }
 
         // update calibration status
-        if (m_plan != NULL && initMode())
+        if (m_plan != NULL && execMode())
         {
           m_plan->updateCalibration(vs);
 
@@ -458,34 +460,25 @@ namespace Plan
       void
       onVehicleService(const IMC::VehicleState* vs)
       {
-        switch (m_pcs.state)
-        {
-          case IMC::PlanControlState::PCS_BLOCKED:
-            changeMode(IMC::PlanControlState::PCS_READY, DTR("vehicle ready"));
-            break;
-          case IMC::PlanControlState::PCS_INITIALIZING:
-            if (!pendingReply())
-            {
-              IMC::PlanManeuver* pman = m_plan->loadStartManeuver();
-              startManeuver(pman);
-            }
-            break;
-          case IMC::PlanControlState::PCS_EXECUTING:
-            if (!pendingReply())
-            {
-              onFailure(vs->last_error, false);
-              m_reply.plan_id = m_spec.plan_id;
-              changeMode(IMC::PlanControlState::PCS_READY, vs->last_error);
-            }
-            break;
-          default:
-            break;
-        }
+        if (!execMode() || pendingReply())
+          return;
+
+        onFailure(vs->last_error, false);
+        m_reply.plan_id = m_spec.plan_id;
+        changeMode(IMC::PlanControlState::PCS_READY, vs->last_error);
       }
 
       void
       onVehicleManeuver(const IMC::VehicleState* vs)
       {
+        if (!pendingReply() && !execMode())
+        {
+          // should never happen
+          // attempt to stop maneuver
+          vehicleRequest(IMC::VehicleCommand::VC_STOP_MANEUVER);
+          return;
+        }
+
         if (!execMode() || pendingReply())
           return;
 
@@ -516,55 +509,27 @@ namespace Plan
       void
       onVehicleError(const IMC::VehicleState* vs)
       {
+        if (!execMode() || pendingReply())
+          return;
+
         std::string err_ents = DTR("vehicle errors: ") + vs->error_ents;
         std::string edesc = vs->last_error_time < 0 ? err_ents : vs->last_error;
 
-        if (execMode())
-        {
-          onFailure(edesc);
-          m_reply.plan_id = m_spec.plan_id;
-        }
+        onFailure(edesc);
+        m_reply.plan_id = m_spec.plan_id;
 
-        // there are new error entities
-        if (edesc != m_last_event && !pendingReply())
-        {
-          if (initMode())
-          {
-            onFailure(edesc);
-            // stop calibration if any is running
+        // stop calibration if any is running
+        if (m_plan != NULL)
+          if (!m_plan->isCalibrationDone())
             vehicleRequest(IMC::VehicleCommand::VC_STOP_CALIBRATION);
-            m_reply.plan_id = m_spec.plan_id;
-          }
 
-          changeMode(IMC::PlanControlState::PCS_BLOCKED, edesc, false);
-        }
+        changeMode(IMC::PlanControlState::PCS_READY, edesc, false);
       }
 
       void
       onVehicleCalibration(const IMC::VehicleState* vs)
       {
         (void)vs;
-
-        if (initMode())
-          return;
-
-        if (!blockedMode())
-        {
-          changeMode(IMC::PlanControlState::PCS_BLOCKED,
-                     DTR("vehicle in CALIBRATION mode"), false);
-        }
-      }
-
-      void
-      onVehicleExternalControl(const IMC::VehicleState* vs)
-      {
-        (void)vs;
-
-        if (blockedMode())
-          return;
-
-        changeMode(IMC::PlanControlState::PCS_BLOCKED,
-                   DTR("vehicle in EXTERNAL mode"), false);
       }
 
       void
@@ -640,7 +605,7 @@ namespace Plan
       loadPlan(const std::string& plan_id, const IMC::Message* arg,
                bool plan_startup = false)
       {
-        if ((initMode() && !plan_startup) || execMode())
+        if (!plan_startup && execMode())
         {
           onFailure(DTR("cannot load plan now"));
           return false;
@@ -669,6 +634,8 @@ namespace Plan
 
         m_pcs.plan_id = m_spec.plan_id;
 
+        ps.toText(std::cerr);
+
         onSuccess(DTR("plan loaded"), false);
 
         return true;
@@ -678,7 +645,7 @@ namespace Plan
       void
       getPlan(void)
       {
-        if (!initMode() && !execMode())
+        if (!execMode())
         {
           onFailure(DTR("no plan is running"));
           return;
@@ -695,7 +662,7 @@ namespace Plan
       bool
       stopPlan(bool plan_startup = false)
       {
-        if (initMode() || execMode())
+        if (execMode())
         {
           if (!plan_startup)
           {
@@ -858,7 +825,7 @@ namespace Plan
       {
         bool stopped = stopPlan(true);
 
-        changeMode(IMC::PlanControlState::PCS_INITIALIZING,
+        changeMode(IMC::PlanControlState::PCS_EXECUTING,
                    DTR("plan initializing: ") + plan_id);
 
         if (!loadPlan(plan_id, spec, true))
@@ -867,13 +834,10 @@ namespace Plan
         changeLog(plan_id);
 
         // Flag the plan as starting
-        if (initMode() || execMode())
-        {
-          if (!stopped)
-            m_plan->planStopped();
+        if (!stopped)
+          m_plan->planStopped();
 
-          m_plan->planStarted();
-        }
+        m_plan->planStarted();
 
         dispatch(m_spec);
 
@@ -1024,11 +988,11 @@ namespace Plan
         {
           debug(DTR("now in %s state"), DTR(c_state_desc[s]));
 
-          bool was_in_plan = initMode() || execMode();
+          bool was_in_plan = execMode();
 
           m_pcs.state = s;
 
-          bool is_in_plan = initMode() || execMode();
+          bool is_in_plan = execMode();
 
           if (was_in_plan && !is_in_plan)
           {
@@ -1086,7 +1050,7 @@ namespace Plan
       reportProgress(void)
       {
         // Must be executing or calibrating to be able to compute progress
-        if (m_plan == NULL || (!execMode() && !initMode()))
+        if (m_plan == NULL || !execMode())
           return;
 
         m_pcs.plan_progress = m_plan->updateProgress(&m_mcs);
@@ -1194,12 +1158,6 @@ namespace Plan
       readyMode(void) const
       {
         return m_pcs.state == IMC::PlanControlState::PCS_READY;
-      }
-
-      inline bool
-      initMode(void) const
-      {
-        return m_pcs.state == IMC::PlanControlState::PCS_INITIALIZING;
       }
 
       inline bool
