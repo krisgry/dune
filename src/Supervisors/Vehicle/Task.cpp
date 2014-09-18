@@ -588,16 +588,10 @@ namespace Supervisors
       }
 
       void
-      setLastError(const std::string& str, double time)
+      setLastError(const std::string& str, double time = Clock::getSinceEpoch())
       {
         m_vs.last_error = str;
         m_vs.last_error_time = time;
-      }
-
-      void
-      setLastError(const std::string& str)
-      {
-        setLastError(str, Clock::getSinceEpoch());
       }
 
       void
