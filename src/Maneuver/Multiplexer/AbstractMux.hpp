@@ -22,40 +22,76 @@
 // language governing permissions and limitations at                        *
 // https://www.lsts.pt/dune/licence.                                        *
 //***************************************************************************
-// Author: Kristian Klausen                                                 *
+// Author: Pedro Calado                                                     *
 //***************************************************************************
 
-#ifndef TRANSPORTS_FLIGHT_GEAR_HELPERS_HPP_INCLUDED_
-#define TRANSPORTS_FLIGHT_GEAR_HELPERS_HPP_INCLUDED_
+#ifndef MANEUVER_MULTIPLEXER_ABSTRACT_MUX_HPP_INCLUDED_
+#define MANEUVER_MULTIPLEXER_ABSTRACT_MUX_HPP_INCLUDED_
 
-// DUNE headers.
 #include <DUNE/DUNE.hpp>
 
-// Local headers.
-#include "Helpers.hpp"
-#include "net_fdm.hxx"
-#include "net_ctrls.hxx"
+using DUNE_NAMESPACES;
 
-namespace Transports
+namespace Maneuver
 {
-  namespace FlightGear
+  namespace Multiplexer
   {
-    using DUNE_NAMESPACES;
+    //! Abstract Multiplexed maneuver
+    class AbstractMux
+    {
+    public:
+      //! Constructor
+      //! @param[in] task pointer to Maneuver task
+      AbstractMux(Maneuvers::Maneuver* task):
+        m_task(task)
+      { }
 
-    void
-    convertFromNetworkEndian(FGNetFDM* net);
+      //! Destructor
+      virtual
+      ~AbstractMux(void)
+      { }
 
-    void
-    convertToNetworkEndian(FGNetFDM* net);
+      //! Start function
+      virtual void
+      start(const IMC::Maneuver* maneuver) = 0;
 
-    void
-    convertFromNetworkEndian(FGNetCtrls* ctrls);
+      //! On PathControlState message
+      virtual void
+      onPathControlState(const IMC::PathControlState* pcs)
+      {
+        (void)pcs;
+      }
 
-    void
-    convertToNetworkEndian(FGNetCtrls* ctrls);
+      //! On EstimatedState message
+      virtual void
+      onEstimatedState(const IMC::EstimatedState* msg)
+      {
+        (void)msg;
+      }
 
-    void
-    convertFromSimstateToFGNetHost(IMC::SimulatedState* simstate, IMC::Acceleration* acc, FGNetFDM* net);
+      //! On StateReport function
+      virtual void
+      onStateReport(void)
+      { }
+
+      //! On VehicleMedium message
+      virtual void
+      onVehicleMedium(const IMC::VehicleMedium* msg)
+      {
+        (void)msg;
+      }
+
+      //! On GpsFix message
+      virtual void
+      onGpsFix(const IMC::GpsFix* msg)
+      {
+        (void)msg;
+      }
+
+    protected:
+      //! Pointer to task
+      Maneuvers::Maneuver* m_task;
+    };
   }
 }
 

@@ -58,10 +58,6 @@ namespace Sensors
     static const unsigned c_code_sys_restart = 0x01a6;
     //! Restart system ack code.
     static const unsigned c_code_sys_restart_ack = 0x01a7;
-    //! Modem base frequency.
-    static const unsigned c_base_frequency = 22000;
-    //! Channel to frequency.
-    static const unsigned c_chn_frequency = 1000;
     // Acoustic Report code.
     static const uint8_t c_code_report = 0x1;
     // Start plan code.
@@ -110,60 +106,57 @@ namespace Sensors
     // Configuration parameters.
     struct Arguments
     {
-      // Serial port device.
+      //! Serial port device.
       std::string uart_dev;
-      // Serial port baud rate.
+      //! Serial port baud rate.
       unsigned uart_baud;
-      // Maximum time without ranges.
+      //! Maximum time without ranges.
       double range_tout;
-      // Report types.
+      //! Report types.
       std::string report;
-      // Delay before sending range reports.
+      //! Delay before sending range reports.
       double report_delay_bef;
-      // Delay after sending range reports.
+      //! Delay after sending range reports.
       double report_delay_aft;
-      // Delay before sending Mini-Packet.
+      //! Delay before sending Mini-Packet.
       double mpk_delay_bef;
-      // Delay after sending Mini-Packet.
+      //! Delay after sending Mini-Packet.
       double mpk_delay_aft;
-      // Maximum age of a good range (for reporting).
+      //! Maximum age of a good range (for reporting).
       double good_range_age;
-      // Time between range reports.
+      //! Time between range reports.
       double report_period;
-      // Ping Period.
+      //! Ping Period.
       double ping_period;
-      // Ping Timeout.
+      //! Ping Timeout.
       unsigned ping_tout;
-      // Length of transmit pings.
+      //! Length of transmit pings.
       unsigned tx_length;
-      // Length of receive pings.
+      //! Length of receive pings.
       unsigned rx_length;
-      // Sound speed on water.
+      //! Sound speed on water.
       double sound_speed_def;
       //! Entity label of sound speed provider.
       std::string sound_speed_elabel;
-      // Turn around time (ms).
+      //! Turn around time (ms).
       unsigned turn_around_time;
-      // Transmit only underwater.
+      //! Transmit only underwater.
       bool only_underwater;
+      //! Name of the section with modem addresses.
+      std::string addr_section;
     };
 
+    //! Beacon
     struct Beacon
     {
       // Beacon name.
       std::string name;
-      // Ping command.
-      std::string ping_cmd;
       // Beacon id.
       unsigned id;
-      // Beacon receiving channel.
-      unsigned rx_channel;
-      // Beacon receiving frequency.
-      unsigned rx_frequency;
-      // Beacon transmission channel.
-      unsigned tx_channel;
-      // Beacon transmission frequency.
-      unsigned tx_frequency;
+      // Beacon query frequency.
+      unsigned query_frequency;
+      // Beacon reply frequency.
+      unsigned reply_frequency;
       // Last range.
       unsigned range;
       // Last range timestamp.
@@ -174,15 +167,11 @@ namespace Sensors
       double lon;
       // Depth
       float depth;
-      // Delay
-      uint8_t delay;
 
       Beacon(void):
         id(0),
-        rx_channel(0),
-        rx_frequency(0),
-        tx_channel(0),
-        tx_frequency(0),
+        query_frequency(0),
+        reply_frequency(0),
         range(0),
         range_time(0),
         lat(0),
@@ -191,12 +180,31 @@ namespace Sensors
       { }
     };
 
+    //! Narrow band transponder.
+    struct Transponder
+    {
+      // Query frequency.
+      unsigned query_freq;
+      // Reply frequency.
+      unsigned reply_freq;
+
+      Transponder(unsigned q, unsigned r):
+        query_freq(q),
+        reply_freq(r)
+      { }
+    };
+
+    // Type definition for mapping addresses.
+    typedef std::map<std::string, Transponder> NarrowBandMap;
+
     struct Task: public DUNE::Tasks::Task
     {
       // Maximum buffer size.
       static const int c_bfr_size = 256;
       // Beacons.
       std::vector<Beacon> m_beacons;
+      // Map of narrow band transponders.
+      NarrowBandMap m_nbmap;
       // Serial port handle.
       SerialPort* m_uart;
       // Range.
@@ -330,6 +338,10 @@ namespace Sensors
         .defaultValue("false")
         .description("Do not transmit when at water surface");
 
+        param("Address Section", m_args.addr_section)
+        .defaultValue("Micromodem Addresses")
+        .description("Name of the configuration section with modem addresses");
+
         // Initialize state messages.
         m_states[STA_BOOT].state = IMC::EntityState::ESTA_BOOT;
         m_states[STA_BOOT].description = DTR("initializing");
@@ -347,6 +359,15 @@ namespace Sensors
         m_states[STA_ERR_SRC].description = DTR("failed to set modem address");
 
 	m_stop_comms = true;
+
+        // Process narrow band transponders.
+        std::vector<std::string> txponders = ctx.config.options("Narrow Band Transponders");
+        for (unsigned i = 0; i < txponders.size(); ++i)
+        {
+          std::vector<unsigned> freqs;
+          ctx.config.get("Narrow Band Transponders", txponders[i], "", freqs);
+          m_nbmap.insert(std::make_pair(txponders[i], Transponder(freqs[0], freqs[1])));
+        }
 
         // Register handlers.
         bind<IMC::EstimatedState>(this);
@@ -385,7 +406,7 @@ namespace Sensors
       {
         // Get modem address.
         std::string agent = getSystemName();
-        m_ctx.config.get("Micromodem Addresses", agent, "1024", m_addr);
+        m_ctx.config.get(m_args.addr_section, agent, "1024", m_addr);
         if (m_addr == 1024)
           throw std::runtime_error(String::str(DTR("modem address for agent '%s' is invalid"), agent.c_str()));
 
@@ -493,12 +514,6 @@ namespace Sensors
       onReportEntityState(void)
       {
         dispatch(m_states[m_state]);
-      }
-
-      unsigned
-      channelToFrequency(unsigned channel)
-      {
-        return channel * c_chn_frequency + c_base_frequency;
       }
 
       void
@@ -746,7 +761,6 @@ namespace Sensors
         }
       }
 
-
       void
       ping(void)
       {
@@ -754,13 +768,13 @@ namespace Sensors
         for (unsigned i = 0; i < Navigation::c_max_transponders; ++i)
         {
           if (i < m_beacons.size())
-            freqs.push_back(m_beacons[i].tx_frequency);
+            freqs.push_back(m_beacons[i].reply_frequency);
           else
             freqs.push_back(0);
         }
 
         std::string cmd = String::str("$CCPNT,%u,%u,%u,%u,%u,%u,%u,%u,1\r\n",
-                                      m_beacons[0].rx_frequency, m_args.tx_length,
+                                      m_beacons[0].query_frequency, m_args.tx_length,
                                       m_args.rx_length, m_args.ping_tout,
                                       freqs[0], freqs[1], freqs[2], freqs[3]);
 
@@ -838,21 +852,18 @@ namespace Sensors
             if (*itr == NULL)
               continue;
 
+            NarrowBandMap::iterator nb_itr = m_nbmap.find((*itr)->beacon);
+            if (nb_itr == m_nbmap.end())
+              return;
+
             Beacon beacon;
             beacon.id = i;
             beacon.name = (*itr)->beacon;
-            beacon.rx_channel = (*itr)->query_channel;
-            beacon.rx_frequency = channelToFrequency((*itr)->query_channel);
-            beacon.tx_channel = (*itr)->reply_channel;
-            beacon.tx_frequency = channelToFrequency((*itr)->reply_channel);
-            beacon.ping_cmd = String::str("$CCPNT,%u,%u,%u,%u,%u,0,0,0,1\r\n",
-                                          beacon.rx_frequency, m_args.tx_length,
-                                          m_args.rx_length, m_args.ping_tout,
-                                          beacon.tx_frequency);
+            beacon.query_frequency = nb_itr->second.query_freq;
+            beacon.reply_frequency = nb_itr->second.reply_freq;
             beacon.lat = (*itr)->lat;
             beacon.lon = (*itr)->lon;
             beacon.depth = (*itr)->depth;
-            beacon.delay = (*itr)->transponder_delay;
 
             m_beacons.push_back(beacon);
           }
@@ -873,9 +884,6 @@ namespace Sensors
             beacon.lat = m_beacons[i].lat;
             beacon.lon = m_beacons[i].lon;
             beacon.depth = m_beacons[i].depth;
-            beacon.query_channel = m_beacons[i].rx_channel;
-            beacon.reply_channel = m_beacons[i].tx_channel;
-            beacon.transponder_delay = m_beacons[i].delay;
 
             cfg.beacons.push_back(beacon);
           }

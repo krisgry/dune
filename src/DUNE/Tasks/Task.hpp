@@ -424,7 +424,7 @@ namespace DUNE
       bool
       isActivating(void) const
       {
-        return m_activating;
+        return m_act_state.state == IMC::EntityActivationState::EAS_ACT_IP;
       }
 
       //! Test if task is deactivating.
@@ -432,7 +432,7 @@ namespace DUNE
       bool
       isDeactivating(void) const
       {
-        return m_deactivating;
+        return m_act_state.state == IMC::EntityActivationState::EAS_DEACT_IP;
       }
 
       //! Wait for the receiving queue to contain at least one message
@@ -529,6 +529,19 @@ namespace DUNE
         void (T::* func)(const IMC::Message*) = &T::consume;
         for (unsigned int i = 0; i < list.size(); ++i)
           bind(list[i], new Consumer<T, IMC::Message>(*task_obj, func));
+      }
+
+      //! Bind multiple messages to a consumer method.
+      //! @param task_obj consumer object.
+      //! @param list list of message identifiers.
+      //! @param consumer consumer method.
+      template <typename T, typename M>
+      void
+      bind(T* task_obj, const std::vector<uint32_t>& list,
+           void (T::* consumer)(const M*) = &T::consume)
+      {
+        for (unsigned int i = 0; i < list.size(); ++i)
+          bind(list[i], new Consumer<T, M>(*task_obj, consumer));
       }
 
       //! Bind multiple messages to a default consumer method.
@@ -733,10 +746,6 @@ namespace DUNE
       std::string m_param_editor;
       //! Next activation state.
       NextActivationState m_next_act_state;
-      //! True if task is activating.
-      bool m_activating;
-      //! True if task is deactivating.
-      bool m_deactivating;
 
       //! Report current entity states by dispatching EntityState
       //! messages. This function will at least report the state of
